@@ -7,12 +7,9 @@
 ![](md_imgs/0.png)
 
 
-<div style="text-align: center;">
-    <iframe src="//player.bilibili.com/player.html?aid=578919061&bvid=BV1E64y177dE&cid=1347370865&p=1" 
-            scrolling="no" border="0" frameborder="no" 
-            framespacing="0" allowfullscreen="true">
-    </iframe>
-</div>
+[B站演示视频](https://www.bilibili.com/video/BV1E64y177dE/?spm_id_from=333.880.my_history.page.click&vd_source=9644e53d7704a3faf52232f7ef91f07e)
+
+
 
 众所周知，windows下有一款搜索文件飞快的软件，everything，可以毫秒级的速度找到电脑上所有文件名与搜索类似的文件
 而在linux系统下也有类似的需求，但现有的搜索工具都是基于命令行的，非常不友好

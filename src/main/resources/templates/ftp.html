@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+	<meta charset="utf-8">
+	<title>文件云</title>
+	<meta name="renderer" content="webkit">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+	<link rel="stylesheet" href="https://cdn.staticfile.org/twitter-bootstrap/3.3.7/css/bootstrap.min.css">
+	<link rel="stylesheet" th:href="@{/layui/css/layui.css}">
+	<script src="https://cdn.staticfile.org/jquery/2.1.1/jquery.min.js"></script>
+	<script src="https://cdn.staticfile.org/twitter-bootstrap/3.3.7/js/bootstrap.min.js"></script>
+	<script src="https://cdn.staticfile.org/vue/2.7.0/vue.min.js"></script>
+	<script th:src="@{/layui/layui.js}"></script>
+	<script src="https://cdn.jsdelivr.net/npm/js-cookie@2/src/js.cookie.min.js"></script>
+	<script src="https://cdn.bootcss.com/blueimp-md5/2.10.0/js/md5.min.js"></script>
+
+	<!--对话框-->
+	<link rel="stylesheet" th:href="@{/js/jconfirm/jquery-confirm.min.css}">
+	<script th:src="@{/js/jconfirm/jquery-confirm.min.js}"></script>
+	<link rel="stylesheet" type="text/css" href="https://www.layuicdn.com/layui/css/layui.css" />
+	<!-- 注意：如果你直接复制所有代码到本地，上述css路径需要改成你本地的 -->
+	<script src="https://www.layuicdn.com/layui/layui.js"></script>
+	<!-- 注意：如果你直接复制所有代码到本地，上述 JS 路径需要改成你本地的 -->
+	<link href="https://cdnjs.cloudflare.com/ajax/libs/paginationjs/2.1.5/pagination.css" rel="stylesheet"
+		  type="text/css">
+
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/paginationjs/2.1.5/pagination.js"></script>
+	<script>
+		selectFiles = []
+		layui.use(['form', 'layedit', 'laydate'], function() {
+			var form = layui.form,
+					layer = layui.layer,
+					layedit = layui.layedit,
+					laydate = layui.laydate;
+
+			//监听指定开关
+			form.on('switch(switchTest)', function(data) {
+				if (this.checked) {
+					files.$data.pre = true
+				} else {
+					files.$data.pre = false
+				}
+			});
+			form.on('checkbox(selectTest)', function(data) {
+				if (this.checked) {
+					var fileurl = data.value
+					selectFiles.push(fileurl)
+					files.$data.selectFiles = selectFiles
+				} else {
+					var fileurl = data.value
+					var idx = selectFiles.indexOf(fileurl)
+					selectFiles.splice(idx, 1)
+					files.$data.selectFiles = selectFiles
+				}
+			});
+		});
+	</script>
+	<style type="text/css">
+		.centerEle {
+			height: 100px;
+			display: -webkit-flex;
+			display: flex;
+			-webkit-align-items: center;
+			align-items: center;
+			-webkit-justify-content: center;
+			justify-content: center;
+		}
+
+		.test_div {
+			overflow: hidden;
+			padding: 5px;
+		}
+	</style>
+	<script type="text/javascript">
+		globalFiles = []
+		nowFiles = []
+		$(document).ready(function() {
+			getallfiles()
+			UserHasLogin()
+		})
+
+		function UserHasLogin() {
+			if (Cookies.get('islogin') == "true" && Cookies.get('username') == "ftpuser") {
+
+			} else {
+				// 返回用户输入的值或null, 第二个值为指定的默认值(可选)
+				var pwd = prompt('输入ftpuser的密码', '');
+				if (pwd !== null && pwd != '') {
+					let pwd_md5 = md5(md5(pwd))
+					//输入你想要的md5验证密码
+					//例如'14e1b600b1fd579f47433b88e8d85291'代表123456
+					//我的代表什么就等着你去猜了，双md5是逆向解密不了的，直接放前端也是几乎100%安全的
+					if (pwd_md5 == 'feeb48139e61df16c5fae3b10c50b187') {
+						Cookies.set('islogin', "true", {
+							expires: 100
+						});
+						Cookies.set('username', 'ftpuser', {
+							expires: 100
+						});
+					} else {
+						Cookies.set('islogin', null, {
+							expires: 0
+						});
+						Cookies.set('username', null, {
+							expires: 0
+						});
+						UserHasLogin()
+					}
+				} else {
+					UserHasLogin()
+				}
+			}
+		}
+		var pageSize = 32
+		var nums = 0
+
+		function initPages(isSearch) {
+			function sources() {
+				var result = []
+				for (var i = 1; i <= nums; i++) result.push(i)
+				return result
+			}
+			var pages = sources()
+			$('#page-container').pagination({
+				dataSource: pages,
+				pageSize: pageSize,
+				callback: function(data, pagination) {
+					var start = data[0]
+					var end = data[data.length - 1]
+					if (!isSearch)
+						setFilePages(start - 1, end)
+					else
+						setSearchFilePages(start - 1, end)
+					isSearch = false
+				}
+			})
+		}
+
+		function setFilePages(start, end) {
+			var items = []
+			for (var i = start; i < end; i++) {
+				items.push(nowFiles[i])
+			}
+			files.$data.files = items
+		}
+
+		function setSearchFilePages(start, end) {
+			var items = []
+			for (var i = start; i < end; i++) {
+				items.push(files.$data.files[i])
+			}
+			files.$data.files = items
+		}
+
+		function getallfiles() {
+			$.ajax({
+				//几个参数需要注意一下
+				type: "get", //方法类型
+				dataType: "json", //预期服务器返回的数据类型
+				url: "/getallfile",
+				success: function(result) {
+					files.$data.files = nowFiles = globalFiles = result
+					nums = globalFiles.length
+					initPages(false)
+				},
+				error: function() {
+					//操作files的函数
+				}
+			});
+		}
+
+		function finishSelect() {
+			var content = '',
+					files = [];
+			if (document.getElementById('file').files === undefined) {
+				files[0] = {
+					'name': document.getElementById('file') && document.getElementById('file').value
+				};
+			} else {
+				files = document.getElementById('file').files;
+			}
+			var fileSize = 0;
+			fileSize = files[0].size;
+			var size = fileSize / 1024;
+			if (size >= 1000 * 5120) {
+				layer.msg('文件不能大于5GB')
+				return
+			}
+			for (var i = 0; i < files.length; i++) {
+				content += files[i].name.split("\\").pop() + ', ';
+			}
+
+			if (content !== '') {
+				document.getElementById('viewfile').value = content.replace(/\, $/g, '');
+			} else {
+				document.getElementById('viewfile').value = '';
+			}
+
+
+		}
+
+		function selectfile() {
+			$("#file").trigger("click");
+		}
+		var times = null
+
+		function upload() {
+			var formData = new FormData($('#uploadForm')[0]);
+			var formFields = document.getElementById('uploadForm').elements;
+			if (!formFields['file'].files.length > 0) {
+				alert("请先选择文件")
+				return;
+			}
+			$.ajax({
+				type: 'post',
+				url: "/uploadFile",
+				data: formData,
+				dataType: "json", //预期服务器返回的数据类型
+				cache: false,
+				processData: false,
+				contentType: false,
+			}).success(function(data) {
+				daojishi.$data.fileurl = data
+				if (times != null) clearInterval(times)
+				// document.getElementById("copy_modal").style.animationDuration = "1s";
+				document.getElementById("copy_modal").style.display = "inline"; //显示
+				var i = 10;
+				//1000表示每隔一秒变化一次，单位为毫秒
+				times = setInterval(function() {
+					i--
+					if (i == -1) {
+						clearInterval(times)
+						document.getElementById("copy_modal").style.display = "none"; //隐藏
+					}
+					daojishi.$data.djs = (i + '').padStart(2, '0') // '0000x'
+				}, 1000);
+
+				getallfiles()
+			}).error(function() {
+				layer.msg('上传失败')
+			});
+		}
+
+
+
+		function copy(value, cb) {
+			// 动态创建 textarea 标签
+			const textarea = document.createElement('textarea')
+			// 将该 textarea 设为 readonly 防止 iOS 下自动唤起键盘，同时将 textarea 移出可视区域
+			textarea.readOnly = 'readonly'
+			textarea.style.position = 'absolute'
+			textarea.style.left = '-9999px'
+			// 将要 copy 的值赋给 textarea 标签的 value 属性
+			// 网上有些例子是赋值给innerText,这样也会赋值成功，但是识别不了\r\n的换行符，赋值给value属性就可以
+			textarea.value = value
+			// 将 textarea 插入到 body 中
+			document.body.appendChild(textarea)
+			// 选中值并复制
+			textarea.select()
+			textarea.setSelectionRange(0, textarea.value.length)
+			document.execCommand('Copy')
+			document.body.removeChild(textarea)
+			if (cb && Object.prototype.toString.call(cb) === '[object Function]') {
+				cb()
+			}
+		}
+
+		function copyUrl(url) {
+			copy(url)
+		}
+
+		function copyUrlAll(urls) {
+			url = ''
+			for (var i = 0; i < urls.length; i++) {
+				url += urls[i]
+				if (i < urls.length - 1)
+					url += "\n"
+			}
+			copy(url)
+		}
+
+		function openUrl(url) {
+			window.open(url);
+		}
+
+		function deleteUrl(fileurl) {
+			layer.confirm('确定删除此文件', {
+				icon: 2,
+				title: '提示'
+			}, function(index) {
+				//确认
+				$.ajax({
+					//几个参数需要注意一下
+					type: "post", //方法类型
+					dataType: "text", //预期服务器返回的数据类型
+					url: "/deleteFile",
+					data: {
+						"fileurl": fileurl
+					},
+					success: function(result) {
+						if (result == 'failed') {
+							layer.msg("删除失败")
+						}
+						getallfiles()
+					},
+					error: function() {
+						// layer.msg('提交修改时异常');
+					}
+				});
+				layer.close(index);
+			}, function(index) {
+				//取消
+				layer.close(index);
+			});
+		}
+
+		function checkImgType(fileName) { //判断是否是图片
+			//用文件名name后缀判断文件类型，可用size属性判断文件大小不能超过500k ， 前端直接判断的好处，免去服务器的压力。
+			if (!/\.(jpg|jpeg|png|GIF|JPG|PNG)$/.test(fileName)) {
+				return false;
+			} else {
+				return true;
+			}
+		}
+
+		function checkPdfType(fileName) { //判断是否是图片
+			//用文件名name后缀判断文件类型，可用size属性判断文件大小不能超过500k ， 前端直接判断的好处，免去服务器的压力。
+			if (!/\.(pdf)$/.test(fileName)) {
+				return false;
+			} else {
+				return true;
+			}
+		}
+
+		function logout() {
+			Cookies.set('islogin', null, {
+				expires: 0
+			});
+			Cookies.set('username', null, {
+				expires: 0
+			});
+			window.location.href = '/login?operate=uploadfile';
+		}
+
+		function search() {
+			// 获取input输入框的值
+			var value = document.getElementById("search").value;
+			// 输出值
+			var copy_files = globalFiles
+
+			var newfiles = []
+			value = value.toLowerCase()
+			for (var i = 0; i < copy_files.length; i++) {
+				fn = copy_files[i].filename.toLowerCase()
+				if (fn.indexOf(value) != -1 || value.indexOf(fn) != -1) {
+					newfiles.push(copy_files[i])
+				}
+			}
+			files.$data.files = newfiles
+			nums = newfiles.length
+			nowFiles = newfiles
+			initPages(true)
+		}
+	</script>
+</head>
+<body>
+<div style="padding: 20px 20px 20px 20px;">
+	<div class="row clearfix ">
+		<div class="col-md-12 column">
+
+			<div class="page-header centerEle">
+				<a href="https://www.ujs.edu.cn/"><img
+						src="https://img1.baidu.com/it/u=4253150609,2988920661&fm=253&fmt=auto&app=138&f=PNG?w=500&h=500"
+						style="width: 70px;height: 70px;"></a>
+				<h1 style="margin-left: 10px">
+					FTP文件云
+				</h1>
+			</div>
+			<div style="float: right;margin-left: 10px">
+				<form class="layui-form" action="">
+					<div class="layui-form-item">
+						<div class="layui-input-block">
+							<input type="checkbox" name="close" lay-skin="switch" lay-text="预览|关闭预览"
+								   lay-filter="switchTest">
+						</div>
+					</div>
+				</form>
+			</div>
+		</div>
+
+		<div class="col-md-12 column" style="clear: both">
+			<div>
+				<div class="centerEle" style="height: 60px;">
+					<div class="form-group col-md-3  mb-2" style="height: 20px;">
+						<input id="search" oninput="search();" onporpertychange="search();" type="text"
+							   placeholder="文件名" autocomplete="off" class="form-control">
+					</div>
+					<button style="margin-left: 10px;"
+							class="btn btn-success  mb-2">&nbsp;&nbsp;&nbsp;&nbsp;搜&nbsp;&nbsp;&nbsp;索&nbsp;&nbsp;&nbsp;&nbsp;
+					</button>
+				</div>
+			</div>
+			<form id="uploadForm" role="form" method="post" onsubmit="javascript:return false;"
+				  enctype="multipart/form-data">
+				<div class="centerEle">
+					<div class="form-group col-md-3  mb-2" style="height: 20px;">
+						<input type="text" name="viewfile" id="viewfile" placeholder="未选择文件" readonly
+							   autocomplete="off" class="form-control" onclick="selectfile()">
+						<input type="file" style="display: none" onchange="finishSelect();" multiple="multiple"
+							   name="file" id="file" />
+					</div>
+					<button onclick="upload()" style="margin-left: 10px;"
+							class="btn btn-primary  mb-2">&nbsp;&nbsp;&nbsp;&nbsp;上&nbsp;&nbsp;&nbsp;传&nbsp;&nbsp;&nbsp;&nbsp;
+					</button>
+				</div>
+			</form>
+		</div>
+		<div id="copy_modal" style="display: none;" class="col-md-12 column">
+			<div class="centerEle">
+				<div class="form-group col-md-3  mb-2" style="height: 20px;">
+					<input type="text" name="fileUrl" id="fileUrl" placeholder="文件url" autocomplete="off"
+						   class="form-control" v-bind:value="fileurl">
+				</div>
+				<button style="margin-left: 10px;" class="btn btn-success  mb-2" @click="copyUrlAll(fileurl)">
+					复制（{{djs}}）
+				</button>
+			</div>
+		</div>
+		<script>
+			var daojishi = new Vue({
+				el: '#copy_modal',
+				data: {
+					djs: 10,
+					fileurl: ''
+				}
+			})
+		</script>
+		<div id="card">
+			<div class="col-md-3" v-for="file in files">
+
+				<div class="thumbnail">
+					<div class="caption">
+						<div v-if="pre" style="margin-bottom: 5px;">
+							<img v-if="checkImgType(file.fileurl)"
+								 style="width:100%;height:200px;object-fit: cover;" v-bind:src="file.fileurl" />
+							<iframe v-else-if="checkPdfType(file.fileurl)" frameborder="0"
+									v-bind:src="file.fileurl+'#toolbar=0'" type="application/pdf"
+									style="width: 100%;;height:195px;object-fit: cover;" scrolling="auto"></iframe>
+							<div v-else style="height: 200px;" class="centerEle">
+								<h3 style="color: crimson;">
+									非可预览资源<br /><br />下载打开可见
+								</h3>
+							</div>
+						</div>
+						<div>
+							<input name="title" style="color: midnightblue;border: none;width: 100%;"
+								   v-bind:value="'文件名：'+file.filename" />
+							<input style="color: midnightblue;border: none;width: 100%;"
+								   v-bind:value="'修改时间：'+file.modifyTime" />
+							<input style="color: midnightblue;border: none;width: 100%;"
+								   v-bind:value="'目录：/'+file.dictionary" />
+						</div>
+						<p style="margin-top: 10px;width: 100%;">
+						<div class="layui-form">
+							<button v-if="selectFiles.indexOf(file.fileurl)==-1" class="btn btn-primary btn-xs"
+									@click="copyUrl(file.fileurl)">拷贝Url</button>
+							<button v-else class="btn btn-success btn-xs"
+									@click="copyUrlAll(selectFiles)">拷贝所选({{selectFiles.length}})</button>
+							<button style="margin-left: 10px" class="btn btn-xs"
+									@click="openUrl(file.fileurl)">打开</button>
+							<button style="margin-left: 10px" class="btn btn-xs"
+									@click="deleteUrl(file.fileurl)">删除</button>
+							<div style="clear:both;float: right;margin-right: -15px;margin-top: 8px;">
+								<input type="checkbox" v-bind:value="file.fileurl" lay-skin="primary"
+									   lay-filter="selectTest">
+							</div>
+						</div>
+						</p>
+					</div>
+				</div>
+
+			</div>
+		</div>
+
+
+		<script>
+			var files = new Vue({
+				el: '#card',
+				data: {
+					urls: [],
+					files: [],
+					selectFiles: [],
+					pre: false
+				},
+				updated() {
+					layui.form.render()
+				}
+			})
+		</script>
+	</div>
+	<div class="centerEle" style="height: 100px;">
+		<div id="page-container"></div>
+	</div>
+	<div class="centerEle" style="height: 60px;">
+		<p style="color: gray;">©2022-江苏大学计算机学院</p>
+	</div>
+</div>
+
+</body>
+</html>
